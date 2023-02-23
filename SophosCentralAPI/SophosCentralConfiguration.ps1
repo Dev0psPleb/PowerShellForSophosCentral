@@ -155,6 +155,79 @@ function Read-SophosCentralConfiguration {
         Loads the default configuration values and returns the deserialized object.
         
         .DESCRIPTION
+        Loads in the default configuration values and returns the deserialized object.
 
+        .PARAMETER Path
+        The file that may or may not exist with a serialized version of the configuration values for this module.
+
+        .OUTPUTS
+        PSCustomObject
+
+        .NOTES
+        Internal helper method.
+        No side-effects. 
+
+        .EXAMPLE
+        Read-SophosCentralConfiguration -Path 'C:\foo\config.json'
+
+        Returns back an object with the deserialized object contained in the specified file, if it exists and is valid.
     #>
+    [CmdletBinding()]
+    param(
+        [string] $Path
+    )
+
+    $content = Get-Content -Path $Path -Encoding UTF8 -ErrorAction Ignore
+    if (-not [string]::IsNullOrEmpty($content))
+    {
+        try{
+            return ($content | ConvertFrom-Json)
+        } catch {
+            $message = "The configuration file for this module is in an invalid state. Use Reset-SophosCentralConfiguration to recover."
+            Write-Log -Message $message -Level Warning
+        }
+    }
+
+    return [PSCustomObject]@{}
+}
+
+function Reset-SophosCentralConfiguration {
+    <#
+        .SYNOPSIS
+        Clears out the user's configuration file and configures this session with all default configuration values.
+
+        .DESCRIPTION
+        Clears out the user's configuration file and configures this session with all default configuration values.
+
+        .PARAMETER SessionOnly
+        By default, this will delete the location configuration file so that all defaults are used again. If this is specified, then only the configuration values that were made during this session will be discarded.
+
+        .EXAMPLE
+        Reset-SophosCentralConfiguration
+
+        Deletes the local configuration file and loads in all default configuration values.
+
+        .NOTES
+        This command will not clear your authentication token.
+    #>
+
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [switch] $SessionOnly
+    )
+
+    if (-not $PSCmdlet.ShouldProcess('Sophos Configuration', 'Reset')){
+        return
+    }
+
+    Set-TelemetryEvent -EventName Reset-SophosCentralConfiguration
+
+    if (-not $SessionOnly){
+        $null = Remove-Item -Path $script:configurationFilePath -Force -ErrorAction SilentlyContinue -ErrorVariable ev
+
+        if (($null -ne $ev) -and ($ev.Count -gt 0) -and ($ev[0].FullyQualifiedErrorId -notlike 'PathNotFound*')){
+            $message = "Reset was unsuccessful. Experienced a problem trying to remove the file [$script:configurationFilePath]."
+            Write-Log -Message $message -Level Warning -Exception $ev[0]
+        }
+    }
 }
